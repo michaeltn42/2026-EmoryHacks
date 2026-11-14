@@ -87,3 +87,8 @@ Each session is saved on the device in three parts, so the session list stays fa
 ## Next steps (from the plan)
 
 Dashboard with the 3 cards (including the choice between recording and a FaceTime coach session), saving sessions to the backend, the therapist review page, and progress across weeks. For the FaceTime coach: getting caller audio working on the Chert line (see its Known issues).
+
+
+### Training voice
+
+Browser training sessions prefer an English voice marked Natural, Neural, Premium, or Enhanced, then other known English voices and the available English fallback. Voices load asynchronously on some browsers; the coach refreshes its voice choice as they become available. Speech uses a relaxed pace and varied encouragement. Rep feedback finishes its sentence before the latest cue plays, while countdowns and session transitions can interrupt immediately. The existing spoken-feedback switch still turns coaching off. No external speech service or API key is required. Actual sound quality depends on the voices exposed by your browser and operating system; a neural-quality voice cannot be guaranteed on every device. This change applies to browser sessions, not the separate FaceTime agent.

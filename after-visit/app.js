@@ -1,3 +1,4 @@
+import { createCoachVoice, goodRepMessage } from './js/coachVoice.js';
 // Bare-bones PT session: pick an exercise -> camera + pose tracking -> auto-start recording when you're
 // in frame -> skeleton, live angle, target, rep scoring with spoken feedback -> pain check -> playback.
 // Plain ES modules, no build step. Serve this folder over http://localhost or https (camera requirement).
@@ -22,11 +23,16 @@ function toast(msg, ms = 3000) { const el = $('#toast'); el.textContent = msg; e
 
 // ---------------------------------------------------------------- voice
 let voiceOn = true;
-function speak(text) {
-  if (!voiceOn || !window.speechSynthesis || !text) return;
-  speechSynthesis.cancel();
-  speechSynthesis.speak(Object.assign(new SpeechSynthesisUtterance(text), { rate: 1.05 }));
+const coachVoice = createCoachVoice();
+function speak(text, options) {
+  if (!voiceOn) { coachVoice.stop(); return; }
+  coachVoice.speak(text, options);
 }
+addEventListener('pagehide', () => coachVoice.stop());
+$('#set-voice').addEventListener('change', e => {
+  voiceOn = e.target.checked;
+  if (!voiceOn) coachVoice.stop();
+});
 const Recog = window.SpeechRecognition || window.webkitSpeechRecognition;
 if (!Recog) $('#note-mic').hidden = true;
 $('#note-mic').addEventListener('click', () => {
@@ -77,7 +83,7 @@ function setCoach(text, kind = '') { const el = $('#coach'); el.textContent = te
 $('#settings').addEventListener('submit', async (e) => {
   e.preventDefault();
   voiceOn = $('#set-voice').checked;
-  speak("Let's get started.");          // iOS only allows speech that starts inside a tap
+  speak("Let’s get comfortable and take this one step at a time.", { interrupt: true });          // iOS only allows speech that starts inside a tap
   const base = EXERCISES[pickedId];
   const target = Number($('#set-target').value) || base.target;
   const ex = { ...base, id: pickedId, target };
@@ -182,12 +188,12 @@ function onPose(res, now) {
 }
 
 function handleEvent(ev) {
-  if (ev.type === 'ready' && !S.readySaid) { S.readySaid = true; setCoach('Go! Start your first rep.', 'good'); speak('Go'); }
+  if (ev.type === 'ready' && !S.readySaid) { S.readySaid = true; setCoach('Go! Start your first rep.', 'good'); speak('Whenever you’re ready.', { interrupt: true }); }
   if (ev.type !== 'rep') return;
   const r = ev.rep, c = S.counter, n = c.reps.length;
   $('#m-reps').textContent = `${n}/${S.reps}`;
   $('#m-good').textContent = c.reps.filter((x) => x.quality === 'good').length;
-  if (r.quality === 'good') { setCoach(`Rep ${n}: good! ${r.peakAngle}°`, 'good'); speak(`${n}. Good rep.`); }
+  if (r.quality === 'good') { setCoach(`Rep ${n}: good! ${r.peakAngle}°`, 'good'); speak(goodRepMessage(n)); }
   else { setCoach(`Rep ${n}: ${r.issues[0]} (${r.peakAngle}°)`, 'warn'); speak(`${n}. ${r.issues[0]}.`); }
   if (n >= S.reps) setTimeout(finish, 1200);
 }
@@ -204,10 +210,10 @@ function inFrame(ok, text) {
   S.inFrameSince ??= performance.now();
   if (!S.countdown && performance.now() - S.inFrameSince > 1500) {
     let n = 3;
-    $('#countdown').textContent = n; $('#countdown').hidden = false; speak('3');
+    $('#countdown').textContent = n; $('#countdown').hidden = false; speak('3', { interrupt: true });
     S.countdown = setInterval(() => {
       n -= 1;
-      if (n > 0) { $('#countdown').textContent = n; speak(String(n)); }
+      if (n > 0) { $('#countdown').textContent = n; speak(String(n), { interrupt: true }); }
       else { clearInterval(S.countdown); S.countdown = null; $('#countdown').hidden = true; startRecording(); }
     }, 1000);
   }
@@ -225,12 +231,13 @@ function startRecording() {
   $('#rec-dot').classList.add('on');
   S.timer = setInterval(() => ($('#rec-time').textContent = mmss(performance.now() - S.t0)), 500);
   setCoach('Recording. Get into the starting position.');
-  speak(`Recording. ${S.reps} reps. Target ${S.ex.target} degrees.`);
+  speak(S.ex.mode === 'simple' ? `Let’s do ${S.reps} reps, nice and easy.` : `Let’s do ${S.reps} reps. Aim for ${S.ex.target} degrees, and take your time.`, { interrupt: true });
 }
 
 $('#end-btn').addEventListener('click', () => (S?.started ? finish() : backToPicker()));
 
 function stopEverything() {
+  coachVoice.stop();
   S.finished = true;
   S.stopLoop?.(); clearInterval(S.timer); clearInterval(S.countdown);
   stopStream(S.stream); S.wake?.release?.();
@@ -246,7 +253,7 @@ async function finish() {
   const durationMs = Math.round(performance.now() - S.t0);
   const blob = await S.recorder.stop();
   stopEverything();
-  speak('Session done. How much pain did you feel?');
+  speak('You’re all done. Take a moment to rest. How much pain did you feel?', { interrupt: true });
   if (!S.counter) { S.counter = S.counters[S.side] || Object.values(S.counters)[0]; }
   const ex = S.ex, summary = S.counter.summary();
   R = {

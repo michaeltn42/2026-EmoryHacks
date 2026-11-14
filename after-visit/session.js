@@ -1,3 +1,4 @@
+import { createCoachVoice, goodRepMessage } from './js/coachVoice.js';
 // Home PT session: today's plan -> each exercise (camera, tracking, auto-recording, scoring) ->
 // short break between exercises -> done, saved on this phone.
 //
@@ -27,11 +28,16 @@ function show(name) {
 
 // ---------------------------------------------------------------- voice (chunk 3 makes this smarter)
 let voiceOn = true;
-function speak(text) {
-  if (!voiceOn || !window.speechSynthesis || !text) return;
-  speechSynthesis.cancel();
-  speechSynthesis.speak(Object.assign(new SpeechSynthesisUtterance(text), { rate: 1, lang: 'en-US' }));
+const coachVoice = createCoachVoice();
+function speak(text, options) {
+  if (!voiceOn) { coachVoice.stop(); return; }
+  coachVoice.speak(text, options);
 }
+addEventListener('pagehide', () => coachVoice.stop());
+$('#voice').addEventListener('change', e => {
+  voiceOn = e.target.checked;
+  if (!voiceOn) coachVoice.stop();
+});
 
 // ---------------------------------------------------------------- 1. plan
 const PLAN = DEMO_PLAN;
@@ -73,7 +79,7 @@ const video = $('#cam'), overlay = $('#overlay');
 $('#start').addEventListener('click', async () => {
   planError('');
   voiceOn = $('#voice').checked;
-  speak("Let's get started.");            // iOS only allows speech that starts inside a tap
+  speak("Let’s get comfortable and take this one step at a time.", { interrupt: true });            // iOS only allows speech that starts inside a tap
   $('#start').disabled = true;
   log = new SessionLog({ plan: PLAN });
   videos = {};
@@ -186,7 +192,7 @@ function onEvent(ev) {
   if (ev.type === 'ready' && !ui.readySaid) {
     ui.readySaid = true;
     setCoach('Go! Start your first rep.', 'good');
-    speak('Go');
+    speak('Whenever you’re ready.', { interrupt: true });
     return;
   }
   if (ev.type !== 'rep') return;
@@ -198,7 +204,7 @@ function onEvent(ev) {
     `<li class="rep-dot rep-dot--${rep.quality}">${icon(ic)}<span class="num">${n}</span><span class="visually-hidden">${word}</span></li>`);
 
   const detail = ex.mode === 'precise' ? ` ${rep.peakAngle}°` : '';
-  if (rep.quality === 'good') { setCoach(`Rep ${n}: good!${detail}`, 'good'); speak(`${n}. Good rep.`); }
+  if (rep.quality === 'good') { setCoach(`Rep ${n}: good!${detail}`, 'good'); speak(goodRepMessage(n)); }
   else { setCoach(`Rep ${n}: ${rep.issues[0] || 'try again'}`, 'warn'); speak(`${n}. ${rep.issues[0] || 'Try again'}.`); }
 
   if (T.done && !ui.ending) { ui.ending = true; setTimeout(() => endExercise(), 1200); }
@@ -217,10 +223,10 @@ function frameCheck(ok, text) {
   ui.inFrameSince ??= performance.now();
   if (!ui.countdown && performance.now() - ui.inFrameSince > 1500) {
     let n = 3;
-    $('#countdown').textContent = n; $('#countdown').hidden = false; speak('3');
+    $('#countdown').textContent = n; $('#countdown').hidden = false; speak('3', { interrupt: true });
     ui.countdown = setInterval(() => {
       n -= 1;
-      if (n > 0) { $('#countdown').textContent = n; speak(String(n)); }
+      if (n > 0) { $('#countdown').textContent = n; speak(String(n), { interrupt: true }); }
       else startRecording();
     }, 1000);
   }
@@ -238,7 +244,7 @@ function startRecording() {
   ui.timer = setInterval(() => ($('#rec-time').textContent = mss(T ? T.elapsed(performance.now()) : 0)), 500);
   const ex = T.ex;
   setCoach('Recording. Get into the starting position.');
-  speak(ex.mode === 'precise' ? `Recording. ${ex.reps} reps. Aim for ${ex.target} degrees.` : `Recording. ${ex.reps} reps.`);
+  speak(ex.mode === 'precise' ? `Let’s do ${ex.reps} reps. Aim for ${ex.target} degrees, and take your time.` : `Let’s do ${ex.reps} reps, nice and easy.`, { interrupt: true });
 }
 $('#start-now').addEventListener('click', () => startRecording());
 $('#skip').addEventListener('click', () => endExercise({ skipped: true }));
@@ -307,6 +313,7 @@ function endRemaining() {
 // ---------------------------------------------------------------- 4. done
 const allGood = (e) => e.summary.totalReps > 0 && e.summary.goodReps === e.summary.totalReps;
 async function finishSession() {
+  coachVoice.stop();
   cam?.stop?.(); stopStream(cam?.stream); cam?.wake?.release?.(); cam = null;
   drawPose(overlay, null);
   log.finish();
@@ -319,7 +326,7 @@ async function finishSession() {
     : allGood(e) ? `<span class="status status--good">${icon('i-check')}${e.summary.goodReps} of ${e.summary.totalReps} good</span>`
       : `<span class="status status--fair">${icon('i-tilde')}${e.summary.goodReps} of ${e.summary.totalReps} good</span>`}</li>`).join('');
   show('done');
-  speak(t.reps ? `Session done! ${t.good} of ${t.reps} good reps.` : 'Session done.');
+  speak(t.reps ? `You’re all done. ${t.good} of ${t.reps} reps were good. Take a moment to rest.` : 'You’re all done. Take a moment to rest.', { interrupt: true });
 
   const saved = $('#saved');
   saved.className = 'saved';
